@@ -7,6 +7,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies into a target directory
@@ -19,6 +20,9 @@ RUN pip install --no-cache-dir --prefix="/install" -r requirements.txt
 FROM python:3.10-slim
 
 WORKDIR /app
+
+# Install libmagic1 which is a runtime dependency for python-magic
+RUN apt-get update && apt-get install -y --no-install-recommends libmagic1 && rm -rf /var/lib/apt/lists/*
 
 # Copy only the installed packages from the builder stage
 COPY --from=builder /install /usr/local
@@ -36,20 +40,3 @@ ENV PORT=8000
 # Command to run the application using uvicorn
 # This will be executed when the container launches
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
-
-
-# ==============================================================================
-# FILE: project/railway.json
-# ==============================================================================
-{
-  "$schema": "https://railway.app/railway.schema.json",
-  "build": {
-    "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile"
-  },
-  "deploy": {
-    "startCommand": "uvicorn app:app --host 0.0.0.0 --port $PORT",
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
-  }
-}

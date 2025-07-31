@@ -15,14 +15,15 @@ class QAEngine:
 
         # Initialize the Google Gemini Pro model for chat-based generation
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash", 
+            model="gemini-2.5-flash", # More specific model name to avoid API version issues
             google_api_key=google_api_key,
-            temperature=0.1,  
+            temperature=0.1,  # Low temperature for more factual, less creative answers
             convert_system_message_to_human=True
         )
         
         # Define the prompt template to guide the LLM's response
         self.prompt_template = """
+        you are a helpful and smart data driven assistant.
         Use the following context to answer the question clearly and concisely.
         If you cannot find the answer in the context, say "I cannot find this information in the provided document."
 

@@ -10,3 +10,7 @@ pypdf
 requests
 python-multipart
 pydantic
+python-dotenv
+unstructured
+python-docx
+python-magic

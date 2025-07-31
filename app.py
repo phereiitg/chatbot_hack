@@ -7,21 +7,21 @@ from pydantic import BaseModel
 from typing import List, Dict
 import os
 import uvicorn
-from models.pdf_processor import PDFProcessor
+from models.document_processor import DocumentProcessor # UPDATED: Renamed from pdf_processor
 from models.qa_engine import QAEngine
 from langchain.vectorstores import FAISS
 
 # --- CONFIGURATION ---
-# Define the URL of the PDF you want to pre-process at startup.
-# Paste your public PDF URL here. If you leave it empty, no pre-warming will occur.
+# Define the URL of the document you want to pre-process at startup.
+# Paste your public PDF or DOCX URL here. If you leave it empty, no pre-warming will occur.
 PRE_WARM_DOC_URL = "https://hackrx.blob.core.windows.net/assets/Arogya%20Sanjeevani%20Policy%20-%20CIN%20-%20U10200WB1906GOI001713%201.pdf?sv=2023-01-03&st=2025-07-21T08%3A29%3A02Z&se=2025-09-22T08%3A29%3A00Z&sr=b&sp=r&sig=nzrz1K9Iurt%2BBXom%2FB%2BMPTFMFP3PRnIvEsipAX10Ig4%3D"
 
 
 # Initialize the FastAPI app
 app = FastAPI(
-    title="PDF-QLM API",
-    version="1.3.0", # Version bump for pre-warming feature
-    description="An API to answer questions from a PDF document using Google Gemini and LangChain, with in-memory caching and startup pre-warming.",
+    title="Document Q&A API", # UPDATED: More generic title
+    version="1.4.0", # Version bump for DOCX support
+    description="An API to answer questions from PDF or DOCX documents using Google Gemini and LangChain, with in-memory caching and startup pre-warming.",
 )
 
 # --- In-Memory Cache for Vector Stores ---
@@ -37,10 +37,10 @@ class QuestionResponse(BaseModel):
 
 # --- Initialize Core Components ---
 try:
-    pdf_processor = PDFProcessor()
+    document_processor = DocumentProcessor() # UPDATED: Renamed from pdf_processor
     qa_engine = QAEngine()
 except Exception as e:
-    pdf_processor = None
+    document_processor = None
     qa_engine = None
     initialization_error = e
 
@@ -49,15 +49,15 @@ except Exception as e:
 async def startup_event():
     """
     This event runs once when the application starts.
-    It pre-processes a specified PDF to warm up the cache.
+    It pre-processes a specified document to warm up the cache.
     """
-    if pdf_processor and PRE_WARM_DOC_URL and PRE_WARM_DOC_URL not in vector_store_cache:
+    if document_processor and PRE_WARM_DOC_URL and PRE_WARM_DOC_URL not in vector_store_cache:
         print(f"STARTUP: Pre-warming cache for URL: {PRE_WARM_DOC_URL}")
         try:
             # This is the same logic as a cache miss
-            documents = await pdf_processor.process_pdf_from_url(PRE_WARM_DOC_URL)
+            documents = await document_processor.process_document_from_url(PRE_WARM_DOC_URL) # UPDATED
             if documents:
-                vector_store = await pdf_processor.create_vector_store(documents)
+                vector_store = await document_processor.create_vector_store(documents) # UPDATED
                 vector_store_cache[PRE_WARM_DOC_URL] = vector_store
                 print(f"STARTUP CACHE POPULATED for: {PRE_WARM_DOC_URL}")
             else:
@@ -70,15 +70,15 @@ async def startup_event():
 @app.get("/", tags=["Status"])
 async def root():
     """Root endpoint to check if the API is running."""
-    return {"message": "PDF-QLM API is running. Ready to answer questions from your documents!"}
+    return {"message": "Document Q&A API is running. Ready to answer questions from your documents!"}
 
 @app.post("/api/v1/hackrx/run", response_model=QuestionResponse, tags=["Q&A"])
-async def process_questions_from_pdf(request: QuestionRequest):
+async def process_questions_from_document(request: QuestionRequest): # UPDATED
     """
-    This endpoint processes a PDF from a URL, and answers a list of questions based on its content.
+    This endpoint processes a document (PDF or DOCX) from a URL, and answers a list of questions based on its content.
     It uses an in-memory cache for vector stores and processes questions in parallel.
     """
-    if not pdf_processor or not qa_engine:
+    if not document_processor or not qa_engine:
         raise HTTPException(status_code=500, detail=f"API Initialization Failed: {initialization_error}")
 
     doc_url = request.doc_url
@@ -90,15 +90,15 @@ async def process_questions_from_pdf(request: QuestionRequest):
             print(f"CACHE HIT: Found vector store for URL: {doc_url}")
             vector_store = vector_store_cache[doc_url]
         else:
-            # Step 2: If not in cache, process the PDF and create the vector store.
-            print(f"CACHE MISS: Processing new PDF from URL: {doc_url}")
-            documents = await pdf_processor.process_pdf_from_url(doc_url)
+            # Step 2: If not in cache, process the document and create the vector store.
+            print(f"CACHE MISS: Processing new document from URL: {doc_url}")
+            documents = await document_processor.process_document_from_url(doc_url) # UPDATED
             
             if not documents:
-                raise HTTPException(status_code=400, detail="Failed to process the PDF document. It might be empty or corrupted.")
+                raise HTTPException(status_code=400, detail="Failed to process the document. It might be empty or corrupted.")
 
             print("Creating new vector store...")
-            vector_store = await pdf_processor.create_vector_store(documents)
+            vector_store = await document_processor.create_vector_store(documents) # UPDATED
             
             # Step 3: Save the newly created vector store to the cache.
             vector_store_cache[doc_url] = vector_store

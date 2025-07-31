@@ -1,18 +1,18 @@
 import requests
 import tempfile
 import os
-from langchain.document_loaders import PyPDFLoader
+from langchain.document_loaders import PyPDFLoader, UnstructuredWordDocumentLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.vectorstores import FAISS
 from typing import List
 
-class PDFProcessor:
+class DocumentProcessor:
     """
-    Handles downloading, loading, splitting, and embedding PDF documents.
+    Handles downloading, loading, splitting, and embedding documents (PDF, DOCX).
     """
     def __init__(self):
-        """Initializes the PDF processor with embeddings and a text splitter."""
+        """Initializes the document processor with embeddings and a text splitter."""
         google_api_key = os.environ.get("GOOGLE_API_KEY")
         if not google_api_key:
             raise ValueError("GOOGLE_API_KEY environment variable not found.")
@@ -28,22 +28,31 @@ class PDFProcessor:
             chunk_overlap=200 # Overlap between chunks to maintain context
         )
     
-    async def process_pdf_from_url(self, pdf_url: str) -> List:
+    async def process_document_from_url(self, doc_url: str) -> List:
         """
-        Downloads a PDF from a URL, loads it, and splits it into documents.
+        Downloads a document from a URL, loads it based on its extension, and splits it into chunks.
         """
         try:
-            # Download the PDF content from the URL
-            response = requests.get(pdf_url, timeout=30)
-            response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+            # Determine the file extension from the URL
+            file_extension = os.path.splitext(doc_url.split('?')[0])[-1].lower()
+
+            # Download the document content from the URL
+            response = requests.get(doc_url, timeout=30)
+            response.raise_for_status()
             
-            # Use a temporary file to store the PDF content
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            # Use a temporary file to store the document content
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
                 temp_file.write(response.content)
                 temp_path = temp_file.name
             
-            # Load the PDF from the temporary file path
-            loader = PyPDFLoader(temp_path)
+            # Choose the appropriate loader based on the file extension
+            if file_extension == '.pdf':
+                loader = PyPDFLoader(temp_path)
+            elif file_extension in ['.doc', '.docx']:
+                loader = UnstructuredWordDocumentLoader(temp_path, mode="elements")
+            else:
+                raise ValueError(f"Unsupported file type: {file_extension}")
+
             documents = loader.load()
             
             # Split the loaded documents into smaller chunks for processing
@@ -51,7 +60,7 @@ class PDFProcessor:
             return splits
         
         except requests.exceptions.RequestException as e:
-            raise RuntimeError(f"Failed to download PDF from URL: {pdf_url}. Error: {e}")
+            raise RuntimeError(f"Failed to download document from URL: {doc_url}. Error: {e}")
         finally:
             # Clean up the temporary file after processing
             if 'temp_path' in locals() and os.path.exists(temp_path):
