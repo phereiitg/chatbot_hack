@@ -15,9 +15,9 @@ class QAEngine:
 
         # Initialize the Google Gemini Pro model for chat-based generation
         self.llm = ChatGoogleGenerativeAI(
-            model="gemini-pro",
+            model="gemini-2.5-flash", 
             google_api_key=google_api_key,
-            temperature=0.1,  # Low temperature for more factual, less creative answers
+            temperature=0.1,  
             convert_system_message_to_human=True
         )
         
