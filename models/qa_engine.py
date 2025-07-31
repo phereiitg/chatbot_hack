@@ -22,14 +22,14 @@ class QAEngine:
         )
         
         # Define the prompt template to guide the LLM's response
-        self.prompt_template = """
-        you are a helpful and smart data driven assistant.
-        Use the following context to answer the question clearly and concisely.
-        If you cannot find the answer in the context, say "I cannot find this information in the provided document."
+        self.prompt_template = """You are an expert Q&A assistant. Your task is to answer the user's question based *only* on the provided context.
+        - Read the context carefully.
+        - If the answer is in the context, provide a clear and concise answer.
+        - If the answer is not in the context, you MUST say 'I cannot find this information in the provided document.'
+        - Do not use any outside knowledge or make up information.
 
         Context: {context}
         Question: {question}
-        
         Answer:
         """
         
@@ -54,7 +54,7 @@ class QAEngine:
             qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
                 chain_type="stuff",  # "stuff" means all retrieved docs are stuffed into the context
-                retriever=vector_store.as_retriever(search_kwargs={"k": 3}), # Retrieve top 3 chunks
+                retriever=vector_store.as_retriever(search_kwargs={"k": 2}), # Retrieve top 2 chunks
                 chain_type_kwargs={"prompt": self.prompt},
                 return_source_documents=False # We only need the final answer
             )

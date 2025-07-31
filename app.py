@@ -15,7 +15,7 @@ from langchain.vectorstores import FAISS
 # Define the URL of the document you want to pre-process at startup.
 # Paste your public PDF or DOCX URL here. If you leave it empty, no pre-warming will occur.
 PRE_WARM_DOC_URL = "https://hackrx.blob.core.windows.net/assets/Arogya%20Sanjeevani%20Policy%20-%20CIN%20-%20U10200WB1906GOI001713%201.pdf?sv=2023-01-03&st=2025-07-21T08%3A29%3A02Z&se=2025-09-22T08%3A29%3A00Z&sr=b&sp=r&sig=nzrz1K9Iurt%2BBXom%2FB%2BMPTFMFP3PRnIvEsipAX10Ig4%3D"
-
+CONCURRENT_REQUEST_LIMIT = 4 
 
 # Initialize the FastAPI app
 app = FastAPI(
@@ -73,10 +73,10 @@ async def root():
     return {"message": "Document Q&A API is running. Ready to answer questions from your documents!"}
 
 @app.post("/api/v1/hackrx/run", response_model=QuestionResponse, tags=["Q&A"])
-async def process_questions_from_document(request: QuestionRequest): # UPDATED
+async def process_questions_from_document(request: QuestionRequest):
     """
     This endpoint processes a document (PDF or DOCX) from a URL, and answers a list of questions based on its content.
-    It uses an in-memory cache for vector stores and processes questions in parallel.
+    It uses an in-memory cache for vector stores and processes questions in controlled parallel batches.
     """
     if not document_processor or not qa_engine:
         raise HTTPException(status_code=500, detail=f"API Initialization Failed: {initialization_error}")
@@ -92,31 +92,36 @@ async def process_questions_from_document(request: QuestionRequest): # UPDATED
         else:
             # Step 2: If not in cache, process the document and create the vector store.
             print(f"CACHE MISS: Processing new document from URL: {doc_url}")
-            documents = await document_processor.process_document_from_url(doc_url) # UPDATED
+            documents = await document_processor.process_document_from_url(doc_url)
             
             if not documents:
                 raise HTTPException(status_code=400, detail="Failed to process the document. It might be empty or corrupted.")
 
             print("Creating new vector store...")
-            vector_store = await document_processor.create_vector_store(documents) # UPDATED
+            vector_store = await document_processor.create_vector_store(documents)
             
             # Step 3: Save the newly created vector store to the cache.
             vector_store_cache[doc_url] = vector_store
             print(f"SAVED TO CACHE: Vector store for URL: {doc_url}")
 
-        # Step 4: Process questions in parallel batches using the vector store.
+        # Step 4: Process questions in controlled parallel batches.
         all_questions = request.questions
-        batch_size = 50
         all_answers = []
+        
+        print(f"Processing {len(all_questions)} questions with a concurrency of {CONCURRENT_REQUEST_LIMIT}...")
 
-        print(f"Processing {len(all_questions)} questions in batches of {batch_size}...")
-
-        for i in range(0, len(all_questions), batch_size):
-            batch_questions = all_questions[i:i + batch_size]
+        for i in range(0, len(all_questions), CONCURRENT_REQUEST_LIMIT):
+            # Create a batch of questions to process
+            batch_questions = all_questions[i:i + CONCURRENT_REQUEST_LIMIT]
+            
+            # Create a list of concurrent tasks for the current batch
             tasks = [qa_engine.get_answer(vector_store, q) for q in batch_questions]
+            
+            # Run the tasks in parallel and wait for all of them to complete
             batch_answers = await asyncio.gather(*tasks)
             all_answers.extend(batch_answers)
-            print(f"Completed batch {i//batch_size + 1}...")
+            
+            print(f"Completed batch starting at question {i+1}...")
         
         print("Successfully generated all answers.")
         return QuestionResponse(answers=all_answers)
